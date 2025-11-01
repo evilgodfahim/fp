@@ -28,22 +28,21 @@ WEIGHT_REPUTATION = 0.5
 
 # Source reputation hierarchy for Bangla sources (higher = more reputable)
 REPUTATION = {
-    "প্রথম আলো": 14,              # most reputable & circulated
-    "সমকাল": 13,                   # strong editorial quality
-    "যুগান্তর": 12,                # established, reliable
-    "কালবেলা": 11,                 # respected daily
-    "বাংলা ট্রিবিউন": 10,          # digital-first quality
-    "বণিক বার্তা": 9,              # business & economy focus
-    "বাংলাদেশ প্রতিদিন": 8,        # high circulation
-    "জাগো নিউজ ২৪": 7,            # popular online
-    "বাংলা নিউজ ২৪": 6,           # established online
-    "ফাইন্যান্সিয়াল এক্সপ্রেস": 5, # business daily
+    "প্রথম আলো": 14,
+    "সমকাল": 13,
+    "যুগান্তর": 12,
+    "কালবেলা": 11,
+    "বাংলা ট্রিবিউন": 10,
+    "বণিক বার্তা": 9,
+    "বাংলাদেশ প্রতিদিন": 8,
+    "জাগো নিউজ ২৪": 7,
+    "বাংলা নিউজ ২৪": 6,
+    "ফাইন্যান্সিয়াল এক্সপ্রেস": 5,
 }
 
 # ===== MODEL =====
 print("🔄 Loading embedding model...")
 try:
-    # Using LaBSE - best for multilingual including Bangla
     model = SentenceTransformer("sentence-transformers/LaBSE")
     print("✅ Model loaded successfully (LaBSE - optimized for Bangla)")
 except Exception as e:
@@ -57,14 +56,12 @@ except Exception as e:
 
 # ===== UTILITY FUNCTIONS =====
 def normalize_title(title):
-    """Normalize title for better clustering (works with Bangla text)"""
     title = re.sub(r'\s+', ' ', title).strip()
-    # Keep Bangla characters, English letters, numbers, and basic punctuation
     title = re.sub(r'[^\u0980-\u09FF\w\s\-\']', '', title)
     return title.lower()
 
 def get_reputation_score(source):
-    return REPUTATION.get(source, 1)  # default reputation = 1 for unknown sources
+    return REPUTATION.get(source, 1)
 
 def parse_xml_date(date_str):
     try:
@@ -202,7 +199,8 @@ def curate_final_feed():
             important_clusters.append({
                 "article": best_article,
                 "cluster_size": len(cluster),
-                "importance": importance
+                "importance": importance,
+                "cluster": cluster  # keep full cluster for matched titles
             })
 
     print(f"✨ Found {len(important_clusters)} important Bangla stories")
@@ -219,7 +217,6 @@ def curate_final_feed():
             final_articles.append(item)
             new_last_seen[article["link"]] = datetime.now(timezone.utc).isoformat()
 
-    # Generate final.xml
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
     ET.SubElement(channel, "title").text = "ফাহিম চূড়ান্ত সংবাদ ফিড"
@@ -236,8 +233,25 @@ def curate_final_feed():
         ET.SubElement(xml_item, "pubDate").text = article["pubDateStr"]
         source_text = f"{article['source']} (+{item['cluster_size']-1} টি অন্যান্য সূত্র)" if item['cluster_size'] > 1 else article["source"]
         ET.SubElement(xml_item, "source").text = source_text
-        desc = f"গুরুত্ব: {imp['score']:.1f} | {imp['feed_count']} টি ফিডে প্রকাশিত | সুনাম: {imp['avg_reputation']:.1f}"
+
+        # --- Added section: Matched titles in English-labeled description ---
+        matched_titles = [
+            a["title"] for a in item["cluster"]
+            if a["title"] != article["title"]
+        ]
+        if matched_titles:
+            matched_text = "\n📰 Matched Titles:\n" + "\n".join(f"- {t}" for t in matched_titles)
+        else:
+            matched_text = ""
+
+        desc = (
+            f"Score: {imp['score']:.1f} | "
+            f"Appeared in {imp['feed_count']} feeds | "
+            f"Reputation: {imp['avg_reputation']:.1f}"
+            f"{matched_text}"
+        )
         ET.SubElement(xml_item, "description").text = desc
+        # --- End of added section ---
 
     tree = ET.ElementTree(rss)
     ET.indent(tree, space="  ")
