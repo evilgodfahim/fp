@@ -16,28 +16,27 @@ MAX_ITEMS = 2500  # Maximum number of articles in temp.xml
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# ===== SOURCE DETECTION =====
+# ===== SOURCE DETECTION (BANGLA) =====
 def get_source(entry):
-    """Identify news source from URL"""
+    """Identify Bangla news source from URL"""
     url = entry.get("link", "").lower()
     source_map = {
-        "thedailystar": "The Daily Star",
-        "prothomalo": "Prothom Alo (English)",
-        "dailysun": "Daily Sun",
-        "unb": "UNB",
-        "bss": "BSS",
-        "bangladeshpost": "Bangladesh Post",
-        "observer": "Observer",
-        "dhakatribune": "Dhaka Tribune",
-        "bdnews24": "BDNEWS24",
-        "newagebd": "New Age",
-        "tbsnews": "The Business Standard",
-        "financialexpress": "Financial Express",
+        "prothomalo.com": "প্রথম আলো",
+        "samakal.com": "সমকাল",
+        "jugantor.com": "যুগান্তর",
+        "jagonews24.com": "জাগো নিউজ ২৪",
+        "kalbela.com": "কালবেলা",
+        "banglatribune.com": "বাংলা ট্রিবিউন",
+        "banglanews24.com": "বাংলা নিউজ ২৪",
+        "bd-pratidin.com": "বাংলাদেশ প্রতিদিন",
+        "bonikbarta.com": "বণিক বার্তা",
+        "bonikbarta": "বণিক বার্তা",
+        "financialexpress": "ফাইন্যান্সিয়াল এক্সপ্রেস",
     }
     for key, name in source_map.items():
         if key in url:
             return name
-    return "Unknown"
+    return "অজানা সূত্র"
 
 # ===== DATE PARSING =====
 def parse_date(entry):
@@ -78,7 +77,7 @@ def load_last_seen():
 def save_last_seen(data):
     """Save URL tracking"""
     with open(LAST_SEEN_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 # ===== XML MANAGEMENT =====
 def load_existing_xml():
@@ -90,9 +89,9 @@ def load_existing_xml():
     else:
         root = ET.Element("rss", version="2.0")
         channel = ET.SubElement(root, "channel")
-        ET.SubElement(channel, "title").text = "Temporary News Collection"
+        ET.SubElement(channel, "title").text = "বাংলা সংবাদ সংগ্রহ"
         ET.SubElement(channel, "link").text = "https://evilgodfahim.github.io/"
-        ET.SubElement(channel, "description").text = "24-hour rolling news window"
+        ET.SubElement(channel, "description").text = "২৪ ঘণ্টার বাংলা সংবাদ"
         return ET.ElementTree(root), root
 
 def clean_old_articles(root):
@@ -100,10 +99,10 @@ def clean_old_articles(root):
     channel = root.find("channel")
     if channel is None:
         return
-    
+
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_ARTICLE_AGE_HOURS)
     items_to_remove = []
-    
+
     for item in channel.findall("item"):
         pub_date_str = item.findtext("pubDate", "")
         try:
@@ -113,10 +112,10 @@ def clean_old_articles(root):
                 items_to_remove.append(item)
         except:
             items_to_remove.append(item)
-    
+
     for item in items_to_remove:
         channel.remove(item)
-    
+
     return len(items_to_remove)
 
 def enforce_max_items(root):
@@ -135,32 +134,32 @@ def enforce_max_items(root):
 # ===== MAIN COLLECTION LOGIC =====
 def collect_articles():
     """Main function: collect new articles from all feeds"""
-    
+
     if not os.path.exists(FEEDS_FILE):
         print(f"❌ {FEEDS_FILE} not found")
         return
-    
-    with open(FEEDS_FILE, "r") as f:
+
+    with open(FEEDS_FILE, "r", encoding="utf-8") as f:
         feed_urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    
-    print(f"📡 Fetching from {len(feed_urls)} feeds...")
-    
+
+    print(f"📡 Fetching from {len(feed_urls)} Bangla feeds...")
+
     last_seen = load_last_seen()
     tree, root = load_existing_xml()
-    
+
     removed_old = clean_old_articles(root)
     print(f"🗑️  Removed {removed_old} old articles (>24h)")
-    
+
     new_articles = []
     feed_errors = []
-    
+
     for feed_url in feed_urls:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries:
                 title = entry.get("title", "").strip()
                 link = entry.get("link", "").strip()
-                
+
                 if not title or not link:
                     continue
                 if link in last_seen:
@@ -169,7 +168,7 @@ def collect_articles():
                 if not is_recent(pub_date):
                     continue
                 source = get_source(entry)
-                
+
                 new_articles.append({
                     "title": title,
                     "link": link,
@@ -179,7 +178,7 @@ def collect_articles():
                 last_seen[link] = pub_date.isoformat()
         except Exception as e:
             feed_errors.append(f"{feed_url}: {str(e)}")
-    
+
     # Add new articles at the top
     channel = root.find("channel")
     first_item = channel.find("item")
@@ -193,28 +192,29 @@ def collect_articles():
             channel.insert(list(channel).index(first_item), item)
         else:
             channel.append(item)
-    
+
     trimmed = enforce_max_items(root)
     if trimmed:
         print(f"📉 Trimmed {trimmed} oldest articles to enforce {MAX_ITEMS} limit")
-    
+
     last_build = channel.find("lastBuildDate")
     if last_build is None:
         last_build = ET.SubElement(channel, "lastBuildDate")
     last_build.text = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
-    
+
+    ET.indent(tree, space="  ")
     tree.write(OUTPUT_FILE, encoding="utf-8", xml_declaration=True)
     save_last_seen(last_seen)
-    
+
     total_items = len(channel.findall("item"))
-    print(f"✅ Added {len(new_articles)} new articles")
+    print(f"✅ Added {len(new_articles)} new Bangla articles")
     print(f"📦 Total in temp.xml: {total_items} articles")
-    
+
     if feed_errors:
         print(f"⚠️  Feed errors ({len(feed_errors)}):")
         for error in feed_errors[:5]:
             print(f"   {error}")
-    
+
     sys.exit(0)
 
 if __name__ == "__main__":
