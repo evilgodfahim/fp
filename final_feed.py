@@ -18,15 +18,15 @@ FINAL_XML_FILE = "final.xml"
 LAST_SEEN_FILE = "last_seen_final.json"
 
 # Thresholds
-MIN_FEED_COUNT = 3  # Story must appear in at least 3 feeds
-SIMILARITY_THRESHOLD = 0.65  # Title clustering threshold
-TOP_N_ARTICLES = 250  # Only keep top 50 articles
+MIN_FEED_COUNT = 3
+SIMILARITY_THRESHOLD = 0.65
+TOP_N_ARTICLES = 50
 
 # Importance scoring weights
 WEIGHT_FEED_COUNT = 10.0
 WEIGHT_REPUTATION = 0.5
 
-# Source reputation hierarchy for Bangla sources (higher = more reputable)
+# Source reputation hierarchy
 REPUTATION = {
     "প্রথম আলো": 14,
     "সমকাল": 13,
@@ -44,7 +44,7 @@ REPUTATION = {
 print("🔄 Loading embedding model...")
 try:
     model = SentenceTransformer("sentence-transformers/LaBSE")
-    print("✅ Model loaded successfully (LaBSE - optimized for Bangla)")
+    print("✅ Model loaded successfully (LaBSE)")
 except Exception as e:
     print(f"⚠️ LaBSE failed, falling back to paraphrase-multilingual-mpnet-base-v2")
     try:
@@ -200,7 +200,7 @@ def curate_final_feed():
                 "article": best_article,
                 "cluster_size": len(cluster),
                 "importance": importance,
-                "cluster": cluster  # keep full cluster for matched titles
+                "cluster": cluster  # full cluster for clickable matched titles
             })
 
     print(f"✨ Found {len(important_clusters)} important Bangla stories")
@@ -226,32 +226,36 @@ def curate_final_feed():
 
     for item in final_articles:
         article = item["article"]
+        cluster = item["cluster"]
         imp = item["importance"]
+
         xml_item = ET.SubElement(channel, "item")
         ET.SubElement(xml_item, "title").text = article["title"]
         ET.SubElement(xml_item, "link").text = article["link"]
         ET.SubElement(xml_item, "pubDate").text = article["pubDateStr"]
+
         source_text = f"{article['source']} (+{item['cluster_size']-1} টি অন্যান্য সূত্র)" if item['cluster_size'] > 1 else article["source"]
         ET.SubElement(xml_item, "source").text = source_text
 
-        # --- Added section: Matched titles in English-labeled description ---
-        matched_titles = [
-            a["title"] for a in item["cluster"]
-            if a["title"] != article["title"]
+        # --- clickable matched titles ---
+        matched_links = [
+            f"- <a href='{a['link']}'>{a['title']}</a>"
+            for a in cluster
+            if a['title'] != article['title']
         ]
-        if matched_titles:
-            matched_text = "\n📰 Matched Titles:\n" + "\n".join(f"- {t}" for t in matched_titles)
+        if matched_links:
+            matched_text = "<br><b>Matched Titles:</b><br>" + "<br>".join(matched_links)
         else:
             matched_text = ""
 
-        desc = (
+        desc_html = (
             f"Score: {imp['score']:.1f} | "
             f"Appeared in {imp['feed_count']} feeds | "
             f"Reputation: {imp['avg_reputation']:.1f}"
             f"{matched_text}"
         )
-        ET.SubElement(xml_item, "description").text = desc
-        # --- End of added section ---
+        # Wrap description in CDATA so HTML is preserved
+        ET.SubElement(xml_item, "description").text = f"<![CDATA[{desc_html}]]>"
 
     tree = ET.ElementTree(rss)
     ET.indent(tree, space="  ")
