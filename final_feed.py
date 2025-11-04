@@ -19,7 +19,7 @@ LAST_SEEN_FILE = "last_seen_final.json"
 
 # Thresholds
 MIN_FEED_COUNT = 3
-SIMILARITY_THRESHOLD = 0.65
+SIMILARITY_THRESHOLD = 0.68
 TOP_N_ARTICLES = 50
 
 # Importance scoring weights
