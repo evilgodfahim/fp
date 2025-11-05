@@ -24,21 +24,6 @@ TOP_N_ARTICLES = 50
 
 # Importance scoring weights
 WEIGHT_FEED_COUNT = 10.0
-WEIGHT_REPUTATION = 0.5
-
-# Source reputation hierarchy
-REPUTATION = {
-    "প্রথম আলো": 5,
-    "সমকাল": 4,
-    "যুগান্তর": 14,
-    "কালবেলা": 11,
-    "বাংলা ট্রিবিউন": 12,
-    "বণিক বার্তা": 13,
-    "বাংলাদেশ প্রতিদিন": 8,
-    "জাগো নিউজ ২৪": 7,
-    "বাংলা নিউজ ২৪": 6,
-    "ফাইন্যান্সিয়াল এক্সপ্রেস": 9,
-}
 
 # ===== MODEL =====
 print("🔄 Loading embedding model...")
@@ -59,9 +44,6 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title).strip()
     title = re.sub(r'[^\u0980-\u09FF\w\s\-\']', '', title)
     return title.lower()
-
-def get_reputation_score(source):
-    return REPUTATION.get(source, 1)
 
 def parse_xml_date(date_str):
     try:
@@ -146,24 +128,17 @@ def cluster_articles(articles):
 # ===== IMPORTANCE SCORING =====
 def calculate_importance(cluster):
     unique_sources = len(set(a["source"] for a in cluster))
-    reputations = [get_reputation_score(a["source"]) for a in cluster]
-    avg_reputation = sum(reputations) / len(reputations) if reputations else 0
-
-    score = (
-        unique_sources * WEIGHT_FEED_COUNT +
-        avg_reputation * WEIGHT_REPUTATION
-    )
+    score = unique_sources * WEIGHT_FEED_COUNT
 
     return {
         "score": score,
-        "feed_count": unique_sources,
-        "avg_reputation": avg_reputation
+        "feed_count": unique_sources
     }
 
 def select_best_article(cluster):
     sorted_cluster = sorted(
         cluster,
-        key=lambda a: (get_reputation_score(a["source"]), a["pubDate"]),
+        key=lambda a: a["pubDate"],
         reverse=True
     )
     return sorted_cluster[0]
@@ -250,8 +225,7 @@ def curate_final_feed():
 
         desc_html = (
             f"Score: {imp['score']:.1f} | "
-            f"Appeared in {imp['feed_count']} feeds | "
-            f"Reputation: {imp['avg_reputation']:.1f}"
+            f"Appeared in {imp['feed_count']} feeds"
             f"{matched_text}"
         )
         # Wrap description in CDATA so HTML is preserved
