@@ -20,7 +20,6 @@ LAST_SEEN_FILE = "last_seen_final.json"
 # Thresholds
 MIN_FEED_COUNT = 3
 SIMILARITY_THRESHOLD = 0.65
-TOP_N_ARTICLES = 50
 
 # Importance scoring weights
 WEIGHT_FEED_COUNT = 10.0
@@ -63,6 +62,9 @@ def load_articles_from_temp():
     tree = ET.parse(TEMP_XML_FILE)
     root = tree.getroot()
     articles = []
+    
+    # Calculate 24-hour cutoff
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
 
     for item in root.findall(".//item"):
         title = item.findtext("title", "").strip()
@@ -74,6 +76,10 @@ def load_articles_from_temp():
             continue
 
         pub_date = parse_xml_date(pub_date_str)
+        
+        # Only include articles from last 24 hours
+        if pub_date < cutoff_time:
+            continue
 
         articles.append({
             "title": title,
@@ -84,7 +90,7 @@ def load_articles_from_temp():
             "source": source
         })
 
-    print(f"📥 Loaded {len(articles)} Bangla articles from temp.xml")
+    print(f"📥 Loaded {len(articles)} Bangla articles from last 24 hours")
     return articles
 
 # ===== CLUSTERING =====
@@ -164,21 +170,20 @@ def curate_final_feed():
         return
 
     clusters = cluster_articles(articles)
-    print(f"🔍 Filtering clusters (min {MIN_FEED_COUNT} feeds)...")
+    print(f"🔍 Processing all clusters (one article per similar group)...")
 
     important_clusters = []
     for cluster in clusters:
-        if len(set(a["source"] for a in cluster)) >= MIN_FEED_COUNT:
-            importance = calculate_importance(cluster)
-            best_article = select_best_article(cluster)
-            important_clusters.append({
-                "article": best_article,
-                "cluster_size": len(cluster),
-                "importance": importance,
-                "cluster": cluster  # full cluster for clickable matched titles
-            })
+        importance = calculate_importance(cluster)
+        best_article = select_best_article(cluster)
+        important_clusters.append({
+            "article": best_article,
+            "cluster_size": len(cluster),
+            "importance": importance,
+            "cluster": cluster  # full cluster for clickable matched titles
+        })
 
-    print(f"✨ Found {len(important_clusters)} important Bangla stories")
+    print(f"✨ Found {len(important_clusters)} unique Bangla stories")
 
     important_clusters.sort(key=lambda x: x["importance"]["score"], reverse=True)
 
@@ -186,7 +191,7 @@ def curate_final_feed():
     new_last_seen = dict(last_seen)
     final_articles = []
 
-    for item in important_clusters[:TOP_N_ARTICLES]:
+    for item in important_clusters:
         article = item["article"]
         if article["link"] not in last_seen:
             final_articles.append(item)
