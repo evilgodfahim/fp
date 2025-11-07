@@ -45,13 +45,21 @@ def normalize_title(title):
     return title.lower()
 
 def parse_xml_date(date_str):
+    # Ensure all dates returned are timezone-aware (UTC)
     try:
-        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z")
+        dt = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z")
     except:
         try:
-            return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S GMT")
+            dt = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S GMT")
         except:
-            return datetime.now(timezone.utc)
+            try:
+                dt = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
+            except:
+                return datetime.now(timezone.utc)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 # ===== ARTICLE LOADING =====
 def load_articles_from_temp():
@@ -76,7 +84,7 @@ def load_articles_from_temp():
             continue
 
         pub_date = parse_xml_date(pub_date_str)
-        
+
         # Only include articles from last 24 hours
         if pub_date < cutoff_time:
             continue
@@ -217,7 +225,6 @@ def curate_final_feed():
         source_text = f"{article['source']} (+{item['cluster_size']-1} টি অন্যান্য সূত্র)" if item['cluster_size'] > 1 else article["source"]
         ET.SubElement(xml_item, "source").text = source_text
 
-        # --- clickable matched titles ---
         matched_links = [
             f"- <a href='{a['link']}'>{a['title']}</a>"
             for a in cluster
@@ -233,7 +240,7 @@ def curate_final_feed():
             f"Appeared in {imp['feed_count']} feeds"
             f"{matched_text}"
         )
-        # Wrap description in CDATA so HTML is preserved
+
         ET.SubElement(xml_item, "description").text = f"<![CDATA[{desc_html}]]>"
 
     tree = ET.ElementTree(rss)
